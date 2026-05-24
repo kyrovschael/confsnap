@@ -5,66 +5,64 @@ import (
 	"os"
 	"time"
 
+	"github.com/nicholasgasior/confsnap/internal/baseline"
+	"github.com/nicholasgasior/confsnap/internal/export"
 	"github.com/spf13/cobra"
-	"github.com/yourusername/confsnap/internal/baseline"
-	"github.com/yourusername/confsnap/internal/export"
 )
 
 func init() {
-	var format string
 	var baselineLabel string
-	var files []string
-	var outputFile string
+	var format string
+	var output string
 
 	exportCmd := &cobra.Command{
 		Use:   "export",
-		Short: "Export a drift report in various formats (csv, markdown, html)",
+		Short: "Export drift results to a file",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if baselineLabel == "" {
-				return fmt.Errorf("--baseline is required")
-			}
-			if len(files) == 0 {
-				return fmt.Errorf("at least one --file is required")
-			}
-
-			bl, err := baseline.Load(baselineLabel)
-			if err != nil {
-				return fmt.Errorf("loading baseline %q: %w", baselineLabel, err)
-			}
-
-			results, err := baseline.CheckDrift(files, bl)
-			if err != nil {
-				return fmt.Errorf("checking drift: %w", err)
-			}
-
-			out := os.Stdout
-			if outputFile != "" {
-				f, err := os.Create(outputFile)
-				if err != nil {
-					return fmt.Errorf("creating output file: %w", err)
-				}
-				defer f.Close()
-				out = f
-			}
-
-			now := time.Now()
-			switch format {
-			case "csv":
-				return export.DriftToCSV(out, results, baselineLabel, now)
-			case "markdown":
-				return export.DriftToMarkdown(out, results, baselineLabel, now)
-			case "html":
-				return export.DriftToHTML(out, results, baselineLabel, now)
-			default:
-				return fmt.Errorf("unknown format %q: choose csv, markdown, or html", format)
-			}
+			return runExport(baselineLabel, format, output)
 		},
 	}
 
-	exportCmd.Flags().StringVarP(&format, "format", "f", "csv", "Output format: csv, markdown, html")
-	exportCmd.Flags().StringVarP(&baselineLabel, "baseline", "b", "", "Baseline label to compare against")
-	exportCmd.Flags().StringSliceVarP(&files, "file", "p", nil, "Files to check (repeatable)")
-	exportCmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write output to file instead of stdout")
+	exportCmd.Flags().StringVarP(&baselineLabel, "baseline", "b", "", "baseline label to compare against (required)")
+	exportCmd.Flags().StringVarP(&format, "format", "f", "csv", "output format: csv, markdown, html, pdf")
+	exportCmd.Flags().StringVarP(&output, "output", "o", "", "output file path (stdout if omitted)")
+	_ = exportCmd.MarkFlagRequired("baseline")
 
 	rootCmd.AddCommand(exportCmd)
+}
+
+func runExport(baselineLabel, format, outputPath string) error {
+	bl, err := baseline.Load(baselineLabel)
+	if err != nil {
+		return fmt.Errorf("load baseline: %w", err)
+	}
+
+	results, err := baseline.CheckDrift(bl)
+	if err != nil {
+		return fmt.Errorf("check drift: %w", err)
+	}
+
+	w := os.Stdout
+	if outputPath != "" {
+		f, err := os.Create(outputPath)
+		if err != nil {
+			return fmt.Errorf("create output file: %w", err)
+		}
+		defer f.Close()
+		w = f
+	}
+
+	now := time.Now()
+	switch format {
+	case "csv":
+		return export.DriftToCSV(w, results, now, baselineLabel)
+	case "markdown":
+		return export.DriftToMarkdown(w, results, now, baselineLabel)
+	case "html":
+		return export.DriftToHTML(w, results, now, baselineLabel)
+	case "pdf":
+		return export.DriftToPDF(w, results, now, baselineLabel)
+	default:
+		return fmt.Errorf("unknown format %q: choose csv, markdown, html, or pdf", format)
+	}
 }
