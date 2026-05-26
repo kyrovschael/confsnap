@@ -87,3 +87,31 @@ func TestDriftToHTML_StatusCSSClass(t *testing.T) {
 		t.Error("expected removed CSS class on status cell")
 	}
 }
+
+// TestDriftToHTML_AllStatusCSSClasses verifies that each drift status value
+// produces the expected CSS class on the status table cell.
+func TestDriftToHTML_AllStatusCSSClasses(t *testing.T) {
+	cases := []struct {
+		status    baseline.DriftStatus
+		wantClass string
+	}{
+		{baseline.StatusUnchanged, "unchanged"},
+		{baseline.StatusModified, "modified"},
+		{baseline.StatusAdded, "added"},
+		{baseline.StatusRemoved, "removed"},
+	}
+	for _, tc := range cases {
+		t.Run(string(tc.status), func(t *testing.T) {
+			results := []baseline.DriftResult{
+				makeDriftResultForHTML("/etc/test.conf", tc.status, "abc", "abc"),
+			}
+			var buf bytes.Buffer
+			if err := DriftToHTML(&buf, results, "test", time.Now()); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !strings.Contains(buf.String(), `class="`+tc.wantClass+`"`) {
+				t.Errorf("expected CSS class %q for status %q", tc.wantClass, tc.status)
+			}
+		})
+	}
+}
